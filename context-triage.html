@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Triage: a game about feeding AI agents</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f5f1; --surface: #ffffff; --surface-2: #f0ede7; --ink: #1f2328; --ink-2: #4a4f57; --ink-3: #767b83;
+    --line: #e2ddd4; --accent: #2f5d8a; --accent-ink: #ffffff;
+    --good: #2e7d4f; --good-bg: #e6f3eb; --bad: #b5402f; --bad-bg: #fbe9e5; --warn: #a8670f; --warn-bg: #fbf0dc;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --surface: #1f2227; --surface-2: #272b31; --ink: #ecebe7; --ink-2: #c2c4c8; --ink-3: #8f949b;
+      --line: #33373e; --accent: #7fb0e0; --accent-ink: #10141a;
+      --good: #6cc592; --good-bg: #1d3226; --bad: #f08a78; --bad-bg: #3a221e; --warn: #e8b265; --warn-bg: #352a19;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "DM Sans", system-ui, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; }
+  h2 { font-size: clamp(22px, 3.4vw, 28px); line-height: 1.2; }
+  h3 { font-size: 18px; }
+  p { margin: 0; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .muted { color: var(--ink-2); }
+  .small { font-size: 14px; }
+  .stack > * + * { margin-top: 14px; }
+  .btn { font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 20px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn:focus-visible, .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; box-shadow: var(--shadow); }
+  .hidden { display: none !important; }
+
+  /* progress */
+  .progress { display: flex; gap: 8px; align-items: center; margin-bottom: 22px; flex-wrap: wrap; }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-3); }
+  .step .dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line); font-size: 12px; background: var(--surface); }
+  .step.active { color: var(--ink); }
+  .step.active .dot { border-color: var(--accent); color: var(--accent); }
+  .step.done .dot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .arrow { color: var(--ink-3); font-size: 13px; }
+
+  /* intro */
+  .rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 22px; }
+  .rule { background: var(--surface-2); border-radius: 12px; padding: 14px; font-size: 14px; }
+  .rule b { display: block; margin-bottom: 4px; }
+  @media (max-width: 680px) { .rules { grid-template-columns: 1fr; } }
+
+  /* task */
+  .task { border-left: 4px solid var(--accent); background: var(--surface); padding: 16px 18px; border-radius: 0 12px 12px 0; margin: 16px 0 20px; box-shadow: var(--shadow); }
+  .task .label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+  .task p { margin-top: 4px; font-weight: 500; }
+
+  /* cards */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .card { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1.5px solid var(--line); border-radius: 14px; padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; transition: border-color .15s, transform .15s, background .15s; position: relative; }
+  .card:hover { transform: translateY(-2px); }
+  .card[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+  .card .title { font-weight: 700; font-size: 15.5px; padding-right: 72px; }
+  .card .desc { font-size: 14px; color: var(--ink-2); }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+  .chip.match { font-variant-numeric: tabular-nums; }
+  .pick { position: absolute; top: 14px; right: 14px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--ink-3); }
+  .card[aria-pressed="true"] .pick { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .card.locked { cursor: default; transform: none; }
+  .verdict { font-size: 13px; border-radius: 10px; padding: 10px 12px; }
+  .verdict b { display: block; margin-bottom: 2px; }
+  .verdict.good { background: var(--good-bg); color: var(--good); }
+  .verdict.bad { background: var(--bad-bg); color: var(--bad); }
+  .verdict.warn { background: var(--warn-bg); color: var(--warn); }
+  .verdict span { color: var(--ink-2); }
+
+  .actionbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+
+  /* result */
+  .score-row { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; align-items: center; margin: 22px 0; }
+  @media (max-width: 680px) { .score-row { grid-template-columns: 1fr; } }
+  .big { font-family: "Fraunces", Georgia, serif; font-size: 64px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .bar { height: 12px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; border-radius: 999px; transition: width .8s ease; }
+  .tally { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tally div { background: var(--surface-2); border-radius: 12px; padding: 12px; font-size: 13px; color: var(--ink-2); }
+  .tally b { display: block; font-size: 22px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .built { list-style: none; padding: 0; margin: 12px 0 0; }
+  .built li { padding: 10px 12px 10px 36px; border-radius: 10px; position: relative; font-size: 14.5px; margin-bottom: 6px; background: var(--surface-2); }
+  .built li::before { position: absolute; left: 12px; top: 10px; font-weight: 700; }
+  .built li.good::before { content: "✓"; color: var(--good); }
+  .built li.bad::before { content: "✕"; color: var(--bad); }
+  .built li.gap::before { content: "?"; color: var(--warn); }
+
+  /* final */
+  .chain { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 24px 0 10px; font-variant-numeric: tabular-nums; }
+  .chain .box { background: var(--surface-2); border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 96px; }
+  .chain .box small { display: block; font-size: 12px; color: var(--ink-3); }
+  .chain .box b { font-size: 24px; }
+  .chain .op { font-size: 22px; color: var(--ink-3); }
+  .chain .box.total { background: var(--accent); color: var(--accent-ink); }
+  .chain .box.total small { color: var(--accent-ink); opacity: .8; }
+  .compare { margin-top: 22px; }
+  .compare .row { display: grid; grid-template-columns: 170px 1fr 52px; gap: 12px; align-items: center; font-size: 14px; margin-bottom: 10px; }
+  .compare .row .bar { margin: 0; }
+  .compare .row b { text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) { .compare .row { grid-template-columns: 1fr 52px; } .compare .row .bar { grid-column: 1 / -1; grid-row: 2; } }
+  .lessons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+  @media (max-width: 680px) { .lessons { grid-template-columns: 1fr; } }
+  .lesson { background: var(--surface-2); border-radius: 12px; padding: 14px; font-size: 14px; }
+  .lesson b { display: block; margin-bottom: 4px; font-size: 15px; }
+  .copied { font-size: 13px; color: var(--good); margin-left: 8px; }
+  footer { margin-top: 40px; font-size: 13px; color: var(--ink-3); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- INTRO -->
+  <section id="intro" class="stack">
+    <div class="eyebrow">A 3-minute game</div>
+    <h1>Context Triage</h1>
+    <p class="muted" style="font-size:18px;max-width:640px">An AI agent is building a sales inventory dashboard for a retail chain in three steps: design, spec, then code. Before each step you choose what information the agent gets. Some of it helps. Some of it looks helpful and isn't.</p>
+    <div class="rules">
+      <div class="rule"><b>1. Read the task</b>Each round is one step of the same build.</div>
+      <div class="rule"><b>2. Pick the cards</b>Tap the cards you want the agent to use. Check the source and the age, not just the match score.</div>
+      <div class="rule"><b>3. See what it builds</b>Bad cards make the agent build the wrong thing. Missing good cards make it guess.</div>
+    </div>
+    <div style="margin-top:24px"><button class="btn" id="startBtn">Start the build</button></div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="hidden">
+    <nav class="progress" id="progress" aria-label="Build steps"></nav>
+
+    <div id="roundView">
+      <div class="eyebrow" id="roundEyebrow"></div>
+      <h2 id="roundTitle"></h2>
+      <div class="task"><div class="label">The task</div><p id="roundTask"></p></div>
+      <p class="small muted" id="roundHint" style="margin-bottom:14px"></p>
+      <div class="grid" id="cards" role="group" aria-label="Context cards"></div>
+      <div class="actionbar">
+        <span class="small muted" id="selCount">0 cards selected</span>
+        <button class="btn" id="sendBtn">Send to agent</button>
+      </div>
+    </div>
+
+    <div id="resultView" class="hidden">
+      <div class="eyebrow" id="resEyebrow"></div>
+      <h2 id="resTitle"></h2>
+      <div class="score-row">
+        <div>
+          <div class="small muted">Output quality this step</div>
+          <div class="big" id="resScore">0%</div>
+          <div class="bar"><i id="resBar"></i></div>
+        </div>
+        <div class="tally">
+          <div><b id="tGood">0</b>good cards used</div>
+          <div><b id="tPoison">0</b>bad cards let in</div>
+          <div><b id="tMissed">0</b>good cards left out</div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>What the agent built</h3>
+        <ul class="built" id="builtList"></ul>
+      </div>
+      <h3 style="margin:28px 0 12px">Card by card</h3>
+      <div class="grid" id="revealCards"></div>
+      <div class="actionbar">
+        <span class="small muted" id="carryNote"></span>
+        <button class="btn" id="nextBtn">Next step</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL -->
+  <section id="final" class="hidden">
+    <div class="eyebrow">The dashboard shipped</div>
+    <h2 id="finalTitle"></h2>
+    <p class="muted" style="margin-top:8px;max-width:680px" id="finalLede"></p>
+    <div class="chain" id="chain"></div>
+    <p class="small muted" style="text-align:center">Each step builds on the one before it, so the scores multiply. They don't average out.</p>
+
+    <div class="panel compare">
+      <h3 style="margin-bottom:14px">How your choices compare</h3>
+      <div id="compareRows"></div>
+      <p class="small muted" style="margin-top:6px">"Give it everything" scores below "Give it nothing": bad information does more damage than no information.</p>
+    </div>
+
+    <h3 style="margin:28px 0 0">What to take away</h3>
+    <div class="lessons">
+      <div class="lesson"><b>Relevance beats volume</b>More information isn't better information. Every bad card you let in costs more than a good card adds.</div>
+      <div class="lesson"><b>Check the source and the date</b>The old reorder policy had a 0.89 match score. A high match can still be outdated, from the wrong audience, or unsafe.</div>
+      <div class="lesson"><b>Mistakes compound</b>A bad design input becomes a bad spec, then bad code. Check the agent's inputs between every step, not only at the end.</div>
+    </div>
+
+    <div class="actionbar" style="justify-content:flex-start">
+      <button class="btn" id="againBtn">Play again</button>
+      <button class="btn ghost" id="copyBtn">Copy my score</button>
+      <span class="copied hidden" id="copiedNote">Copied</span>
+    </div>
+  </section>
+
+  <footer>Context Triage · a game about context poisoning in agentic product development</footer>
+</div>
+
+<script>
+const ROUNDS = [
+  {
+    step: "Design",
+    title: "Round 1: Design the dashboard",
+    task: "Design a sales inventory dashboard for a retail chain. The users are store managers who track stock across 40 stores.",
+    hint: "Pick what the agent should use to design this screen.",
+    cards: [
+      { id: "d1", clean: true, title: "Team design system v4", desc: "Data tables, filters, status badges, spacing tokens.", source: "Team library", age: "Updated 2 weeks ago", match: 0.91,
+        built: "Uses approved data tables, filters and status badges from the team design system.",
+        gap: "No design system, so the agent invents its own buttons, tables and spacing. Nothing matches the rest of the product.",
+        why: "Current, owned by your team, made for this kind of screen." },
+      { id: "d2", clean: true, title: "Store manager research (Q3)", desc: "Managers check stock on tablets on the shop floor and act first on low-stock alerts.", source: "Team research repo", age: "3 months old", match: 0.86,
+        built: "Puts low-stock alerts first and sizes the layout for tablets on the shop floor.",
+        gap: "Without the research, the agent designs for a desktop and buries low-stock alerts. Managers miss what matters.",
+        why: "Real evidence about these exact users." },
+      { id: "d3", clean: true, title: "Accessibility standard", desc: "WCAG 2.2 AA required on all internal tools.", source: "Org standards", age: "Current", match: 0.80,
+        built: "Meets WCAG 2.2 AA: keyboard paths, contrast and labels are built in.",
+        gap: "Accessibility isn't in the inputs, so it's missing from the design and gets caught late in an audit.",
+        why: "A requirement the design can't skip." },
+      { id: "d4", clean: false, type: "Wrong audience", title: "Shopping app patterns", desc: "Product carousels, \"you may also like\", sale banners.", source: "Customer-facing app", age: "Current", match: 0.74,
+        built: "Adds product carousels and \"you may also like\" to a stock-tracking tool for managers.",
+        why: "Polished and current, but made for shoppers. Managers need stock levels, not product browsing." },
+      { id: "d5", clean: false, type: "Old solution", title: "Dashboard redesign (2021)", desc: "Three-column card layout from a past project.", source: "Archived project", age: "4 years old", match: 0.70,
+        built: "Copies the 2021 card layout instead of exploring options. A past answer became a constraint.",
+        why: "An old solution treated as a rule shuts down better options." },
+      { id: "d6", clean: false, type: "Unverified source", title: "\"Top 10 dashboard trends\" blog", desc: "Glassmorphism, oversized charts, dark-mode-only.", source: "Public blog", age: "Unknown", match: 0.65,
+        built: "Adds decorative glass panels and oversized charts that hide the stock numbers managers need.",
+        why: "Trend content with no link to your users or your system." }
+    ]
+  },
+  {
+    step: "Spec",
+    title: "Round 2: Write the requirements",
+    task: "Write the requirements for automatic reorder rules and purchase-order approvals on the same dashboard.",
+    hint: "Watch the match scores. A high score doesn't always mean current.",
+    cards: [
+      { id: "s1", clean: true, title: "Current reorder policy", desc: "Reorder at two weeks of stock left. Orders over $5,000 need regional approval.", source: "Operations team", age: "Updated last month", match: 0.93,
+        built: "Specifies reorder at two weeks of stock and regional approval for orders over $5,000.",
+        gap: "No reorder policy, so the agent makes up its own thresholds. Stores either run out or overstock.",
+        why: "Current and owned by the operations team." },
+      { id: "s2", clean: true, title: "Product catalog rules", desc: "SKU format, units of measure, seasonal items flagged.", source: "Merchandising team", age: "Current", match: 0.88,
+        built: "Uses the right SKU format and units, and excludes seasonal items from auto-reorder.",
+        gap: "The agent doesn't know which items are seasonal, so it auto-reorders winter coats in June.",
+        why: "Tells the agent how the products actually work." },
+      { id: "s3", clean: true, title: "Stock adjustment audit trail", desc: "Every manual stock change logged with who, when and why.", source: "Finance", age: "Current", match: 0.82,
+        built: "Requires every manual stock change to be logged with who, when and why.",
+        gap: "No audit trail in the spec. Finance finds out at month-end when the numbers don't reconcile.",
+        why: "Required to explain where stock went." },
+      { id: "s4", clean: false, type: "Outdated", title: "Reorder policy v2", desc: "Reorder at one week of stock. No approval step.", source: "Operations wiki", age: "18 months old, replaced", match: 0.89,
+        built: "Specifies reorder at one week of stock with no approval step, following a policy that was replaced.",
+        why: "The trap card: high match score, right topic, but replaced 18 months ago." },
+      { id: "s5", clean: false, type: "Wrong source", title: "Competitor feature list", desc: "\"Reorder everything with one click.\"", source: "Sales deck", age: "6 months old", match: 0.71,
+        built: "Adds a one-click \"reorder everything\" button that skips the approval rules.",
+        why: "A sales wish list isn't an operations rule." },
+      { id: "s6", clean: false, type: "Wrong audience", title: "Shopping app wishlist spec", desc: "Save items, get notified when back in stock.", source: "Customer-facing app", age: "Current", match: 0.68,
+        built: "Adds shopper-style wishlists and back-in-stock notifications to a manager's tool.",
+        why: "Right for shoppers, wrong for store managers." }
+    ]
+  },
+  {
+    step: "Code",
+    title: "Round 3: Generate the code",
+    task: "Generate the code that lists stock levels by store, with supplier cost and margin hidden from store staff.",
+    hint: "Last step. Ask where the hiding actually happens.",
+    cards: [
+      { id: "c1", clean: true, title: "Server-side field filter", desc: "Removes cost and margin fields before data leaves the server.", source: "Platform team", age: "Current", match: 0.92,
+        built: "Removes cost and margin on the server, so they never reach a staff member's browser.",
+        gap: "No field filter, so the agent writes its own. It works, but nobody has reviewed it.",
+        why: "The approved, reviewed way to keep the data hidden." },
+      { id: "c2", clean: true, title: "Team API standards", desc: "Cursor pagination, standard error format, rate limits.", source: "Team repo", age: "Current", match: 0.87,
+        built: "Uses cursor pagination and the team's error format. Code review is quick.",
+        gap: "The agent picks its own pagination and error format. Code review finds a dozen inconsistencies.",
+        why: "Keeps the code consistent with everything else." },
+      { id: "c3", clean: true, title: "Role-based access middleware", desc: "Checks user role on every request.", source: "Platform team", age: "Current", match: 0.85,
+        built: "Checks each user's role on every request before returning data.",
+        gap: "No access checks. Any signed-in user can call the endpoint and see everything.",
+        why: "Makes sure only the right roles see the data." },
+      { id: "c4", clean: false, type: "Unsafe pattern", title: "Blog: \"Hide table columns in React\"", desc: "Hides cost columns in the browser.", source: "Public blog", age: "2022", match: 0.84,
+        built: "Hides cost columns in the browser. The screen looks right, but the API already sent the real numbers.",
+        why: "Looks like it works. The data still leaks through the API." },
+      { id: "c5", clean: false, type: "Outdated", title: "API client v1", desc: "Offset pagination, older error format.", source: "Old repo", age: "Marked deprecated", match: 0.79,
+        built: "Calls a deprecated API client. It has to be rewritten before release.",
+        why: "Deprecated means someone already decided not to use it." },
+      { id: "c6", clean: false, type: "Unsafe pattern", title: "Forum fix: \"turn off CORS checks\"", desc: "A snippet that makes the errors go away.", source: "Public forum", age: "Unknown", match: 0.60,
+        built: "Turns off a browser security check to get rid of an error message.",
+        why: "Fixes the symptom by removing a safety check." }
+    ]
+  }
+];
+
+const POISON_COST = 22, MISS_COST = 20;
+const scoreFor = (poison, missed) => Math.max(10, 100 - poison * POISON_COST - missed * MISS_COST);
+
+let round = 0, selected = new Set(), scores = [];
+const $ = id => document.getElementById(id);
+
+function renderProgress() {
+  const nav = $("progress"); nav.innerHTML = "";
+  ROUNDS.forEach((r, i) => {
+    if (i) { const a = document.createElement("span"); a.className = "arrow"; a.textContent = "→"; nav.appendChild(a); }
+    const s = document.createElement("div");
+    s.className = "step" + (i < round || (i === round && scores.length > i) ? " done" : i === round ? " active" : "");
+    s.innerHTML = `<span class="dot">${i < scores.length ? "✓" : i + 1}</span>${r.step}`;
+    nav.appendChild(s);
+  });
+}
+
+function shuffle(a) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+
+function cardHTML(c, revealed, picked) {
+  let verdict = "";
+  if (revealed) {
+    if (c.clean && picked) verdict = `<div class="verdict good"><b>Good card, used</b><span>${c.why}</span></div>`;
+    else if (c.clean) verdict = `<div class="verdict warn"><b>Good card, left out</b><span>${c.why}</span></div>`;
+    else if (picked) verdict = `<div class="verdict bad"><b>${c.type}: let in</b><span>${c.why}</span></div>`;
+    else verdict = `<div class="verdict good"><b>${c.type}: caught</b><span>${c.why}</span></div>`;
+  }
+  return `<span class="pick">${picked ? "Using" : "Use?"}</span>
+    <div class="title">${c.title}</div>
+    <div class="desc">${c.desc}</div>
+    <div class="meta"><span class="chip">${c.source}</span><span class="chip">${c.age}</span><span class="chip match">Match ${c.match.toFixed(2)}</span></div>
+    ${verdict}`;
+}
+
+function startRound() {
+  const r = ROUNDS[round]; selected = new Set();
+  $("roundView").classList.remove("hidden"); $("resultView").classList.add("hidden");
+  $("roundEyebrow").textContent = `Step ${round + 1} of 3 · ${r.step}`;
+  $("roundTitle").textContent = r.title;
+  $("roundTask").textContent = r.task;
+  $("roundHint").textContent = r.hint;
+  const grid = $("cards"); grid.innerHTML = "";
+  shuffle(r.cards).forEach(c => {
+    const b = document.createElement("button");
+    b.className = "card"; b.type = "button"; b.setAttribute("aria-pressed", "false");
+    b.innerHTML = cardHTML(c, false, false);
+    b.addEventListener("click", () => {
+      selected.has(c.id) ? selected.delete(c.id) : selected.add(c.id);
+      const on = selected.has(c.id);
+      b.setAttribute("aria-pressed", on); b.innerHTML = cardHTML(c, false, on);
+      updateCount();
+    });
+    grid.appendChild(b);
+  });
+  updateCount(); renderProgress(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateCount() {
+  const n = selected.size;
+  $("selCount").textContent = `${n} card${n === 1 ? "" : "s"} selected`;
+}
+
+function color(v) { return v >= 75 ? "var(--good)" : v >= 45 ? "var(--warn)" : "var(--bad)"; }
+
+function sendToAgent() {
+  const r = ROUNDS[round];
+  let good = 0, poison = 0, missed = 0;
+  const built = [];
+  r.cards.forEach(c => {
+    const p = selected.has(c.id);
+    if (c.clean && p) { good++; built.push(["good", c.built]); }
+    else if (c.clean) { missed++; built.push(["gap", c.gap]); }
+    else if (p) { poison++; built.push(["bad", c.built]); }
+  });
+  built.sort((a, b) => ["good", "gap", "bad"].indexOf(a[0]) - ["good", "gap", "bad"].indexOf(b[0]));
+  const s = scoreFor(poison, missed); scores.push(s);
+
+  $("roundView").classList.add("hidden"); $("resultView").classList.remove("hidden");
+  $("resEyebrow").textContent = `Step ${round + 1} of 3 · ${r.step} result`;
+  $("resTitle").textContent = s === 100 ? "Clean context. The agent built the right thing." :
+    s >= 70 ? "Mostly right, with a few problems." :
+    s >= 45 ? "The agent built something that looks fine and isn't." : "This step went wrong.";
+  $("resScore").textContent = s + "%"; $("resScore").style.color = color(s);
+  const bar = $("resBar"); bar.style.width = "0%"; bar.style.background = color(s);
+  requestAnimationFrame(() => requestAnimationFrame(() => bar.style.width = s + "%"));
+  $("tGood").textContent = good; $("tPoison").textContent = poison; $("tMissed").textContent = missed;
+  $("builtList").innerHTML = built.map(([k, t]) => `<li class="${k}">${t}</li>`).join("");
+
+  $("revealCards").innerHTML = "";
+  r.cards.forEach(c => {
+    const d = document.createElement("div"); d.className = "card locked";
+    d.setAttribute("aria-pressed", selected.has(c.id));
+    d.innerHTML = cardHTML(c, true, selected.has(c.id));
+    $("revealCards").appendChild(d);
+  });
+
+  const running = scores.reduce((a, b) => a * b / 100, 100);
+  $("carryNote").textContent = round < 2 ? `This output feeds the next step. Build quality so far: ${Math.round(running)}%` : "";
+  $("nextBtn").textContent = round < 2 ? `Next step: ${ROUNDS[round + 1].step}` : "See the shipped result";
+  renderProgress(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showFinal() {
+  $("game").classList.add("hidden"); $("final").classList.remove("hidden");
+  const total = Math.round(scores.reduce((a, b) => a * b / 100, 100));
+  $("finalTitle").textContent = total >= 85 ? `${total}% quality. You fed it relevance, not volume.` :
+    total >= 50 ? `${total}% quality. It shipped, with problems you'll find later.` :
+    `${total}% quality. Every step looked fine. The product didn't.`;
+  $("finalLede").textContent = total >= 85
+    ? "You kept bad information out at every step, so nothing had to be fixed later."
+    : "Each step's problems were passed to the next step. A bad design input became a bad spec, then bad code, and each problem gets more expensive to fix the later it's found.";
+  const chain = $("chain"); chain.innerHTML = "";
+  scores.forEach((s, i) => {
+    if (i) chain.insertAdjacentHTML("beforeend", `<span class="op">×</span>`);
+    chain.insertAdjacentHTML("beforeend", `<div class="box"><small>${ROUNDS[i].step}</small><b>${s}%</b></div>`);
+  });
+  chain.insertAdjacentHTML("beforeend", `<span class="op">=</span><div class="box total"><small>Shipped</small><b>${total}%</b></div>`);
+
+  const everything = Math.round(Math.pow(scoreFor(3, 0) / 100, 3) * 100);
+  const nothing = Math.round(Math.pow(scoreFor(0, 3) / 100, 3) * 100);
+  const rows = [["Your build", total], ["Give it nothing", nothing], ["Give it everything", everything]];
+  $("compareRows").innerHTML = rows.map(([l, v]) =>
+    `<div class="row"><span>${l}</span><div class="bar"><i style="width:${Math.max(v, 2)}%;background:${color(v)}"></i></div><b>${v}%</b></div>`).join("");
+  $("final").dataset.total = total;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+$("startBtn").addEventListener("click", () => {
+  $("intro").classList.add("hidden"); $("game").classList.remove("hidden");
+  round = 0; scores = []; startRound();
+});
+$("sendBtn").addEventListener("click", sendToAgent);
+$("nextBtn").addEventListener("click", () => { if (round < 2) { round++; startRound(); } else showFinal(); });
+$("againBtn").addEventListener("click", () => {
+  $("final").classList.add("hidden"); $("game").classList.remove("hidden");
+  round = 0; scores = []; $("copiedNote").classList.add("hidden"); startRound();
+});
+$("copyBtn").addEventListener("click", async () => {
+  const t = $("final").dataset.total;
+  const txt = `I played Context Triage and shipped an AI-built dashboard at ${t}% quality (${scores.map((s, i) => ROUNDS[i].step + " " + s + "%").join(" × ")}). Giving the agent everything scores ${Math.round(Math.pow(scoreFor(3,0)/100,3)*100)}%. Relevance beats volume.`;
+  try { await navigator.clipboard.writeText(txt); $("copiedNote").textContent = "Copied"; }
+  catch (e) { $("copiedNote").textContent = "Copy failed. Select and copy: " + txt; }
+  $("copiedNote").classList.remove("hidden");
+});
+</script>
+</body>
+</html>
